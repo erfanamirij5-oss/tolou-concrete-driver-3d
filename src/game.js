@@ -12,7 +12,10 @@
   const persistence = window.TolouPersistence;
   const sessionCodec = window.TolouSessionState;
   const concreteQuality = window.TolouConcreteQuality;
+  const orderGenerator = window.TolouOrderGenerator;
+  const orderRuntime = window.TolouOrderRuntime;
   const AUTOSAVE_SLOT = 'autosave';
+  const ORDER_SEED = 'tolou-orders-v1';
   let gameVersion = '0.2.0';
   let paused = false;
   let saveInFlight = null;
@@ -21,8 +24,8 @@
     ui.loading.textContent = 'WebGL/Babylon.js در این سیستم قابل اجرا نیست.';
     return;
   }
-  if (!concreteQuality) {
-    ui.loading.textContent = 'مدل کیفیت بتن بارگذاری نشده است.';
+  if (!concreteQuality || !orderGenerator || !orderRuntime) {
+    ui.loading.textContent = 'هسته کیفیت/سفارش بازی بارگذاری نشده است.';
     return;
   }
 
@@ -110,7 +113,17 @@
   function resetTruck(){ truck.position.set(-150,.1,-202); truck.rotation.set(0,0,0); state.speed=0; state.steer=0; wheelSpin=0; }
   function updateNavTarget(x,z){ arrow.position.x=x; arrow.position.z=z; }
   function applyMissionVisuals(){ siteZones.forEach((z,i)=>z.setEnabled(i===state.missionIndex%destinations.length)); if(state.phase==='TO_SITE'||state.phase==='DELIVERING')updateNavTarget(state.mission.x,state.mission.z); else updateNavTarget(depot.x,depot.z); }
-  function selectMission(){ state.mission=destinations[state.missionIndex%destinations.length]; state.time=state.mission.time; state.loaded=false; state.volume=0; state.actionHold=0; resetConcreteState(); applyMissionVisuals(); }
+  function careerLevelForOrder(){ return Math.max(1,1+Math.floor(state.deliveries/3)); }
+  function buildMission(savedOrder=null){
+    const destination=destinations[state.missionIndex%destinations.length];
+    if(savedOrder){
+      const restored=orderRuntime.restore(destination,savedOrder,orderGenerator);
+      if(restored)return restored;
+    }
+    const order=orderGenerator.generate({destination,missionIndex:state.missionIndex,careerLevel:careerLevelForOrder(),seed:ORDER_SEED});
+    return orderRuntime.composeMission(destination,order);
+  }
+  function selectMission(savedOrder=null){ state.mission=buildMission(savedOrder); state.time=state.mission.time; state.loaded=false; state.volume=0; state.actionHold=0; resetConcreteState(); applyMissionVisuals(); }
   resetTruck(); selectMission();
 
   const distanceTo=(x,z)=>Math.hypot(truck.position.x-x,truck.position.z-z);
@@ -132,21 +145,21 @@
   async function refreshContinue(){ try{ const loaded=await persistence.load(AUTOSAVE_SLOT); const snapshot=loaded?.state||loaded; if(!snapshot)return; const check=sessionCodec.validate(snapshot,destinations); if(!check.ok)return; ui.continueBtn.classList.remove('hidden'); ui.saveInfo.textContent=`ذخیره موجود · ${snapshot.mission?.phase||''} · امتیاز ${snapshot.mission?.score||0}`; }catch(_err){} }
   function restoreSnapshot(snapshot){
     const check=sessionCodec.validate(snapshot,destinations); if(!check.ok)throw new Error(check.reason);
-    state.missionIndex=snapshot.mission.missionIndex; state.mission=destinations[state.missionIndex%destinations.length]; state.phase=snapshot.mission.phase; state.time=snapshot.mission.remainingTime; state.actionHold=snapshot.mission.actionProgress||0; state.score=snapshot.mission.score; state.deliveries=snapshot.mission.deliveries; state.collisions=snapshot.mission.collisions; state.loaded=snapshot.concrete.loaded; state.volume=snapshot.concrete.loadedVolume; state.health=snapshot.truck.health; state.speed=snapshot.truck.speed; state.steer=snapshot.truck.steeringAngle; state.cameraMode=snapshot.settings?.cameraMode||0;
+    state.missionIndex=snapshot.mission.missionIndex; state.deliveries=snapshot.mission.deliveries; state.mission=buildMission(snapshot.mission.order||null); state.phase=snapshot.mission.phase; state.time=snapshot.mission.remainingTime; state.actionHold=snapshot.mission.actionProgress||0; state.score=snapshot.mission.score; state.collisions=snapshot.mission.collisions; state.loaded=snapshot.concrete.loaded; state.volume=snapshot.concrete.loadedVolume; state.health=snapshot.truck.health; state.speed=snapshot.truck.speed; state.steer=snapshot.truck.steeringAngle; state.cameraMode=snapshot.settings?.cameraMode||0;
     applyConcreteState(concreteQuality.hydrate(snapshot.concrete,state.mission.type));
-    truck.position.set(snapshot.truck.position.x,snapshot.truck.position.y,snapshot.truck.position.z); truck.rotation.set(snapshot.truck.rotation.x,snapshot.truck.rotation.y,snapshot.truck.rotation.z); ui.playerName.value=snapshot.player?.name||'راننده طلوع'; state.running=true; paused=false; applyMissionVisuals(); ui.menu.classList.add('hidden'); ui.hud.classList.remove('hidden'); updateHUD(); dispatch('ذخیره بازی بازیابی شد؛ از همان نقطه ادامه بده.');
+    truck.position.set(snapshot.truck.position.x,snapshot.truck.position.y,snapshot.truck.position.z); truck.rotation.set(snapshot.truck.rotation.x,snapshot.truck.rotation.y,snapshot.truck.rotation.z); ui.playerName.value=snapshot.player?.name||'راننده طلوع'; state.running=true; paused=false; applyMissionVisuals(); ui.menu.classList.add('hidden'); ui.hud.classList.remove('hidden'); updateHUD(); dispatch(`ذخیره بازی بازیابی شد؛ سفارش ${state.mission.order?.id||'قدیمی'} ادامه دارد.`);
   }
   async function continueGame(){ try{ const loaded=await persistence.load(AUTOSAVE_SLOT); const snapshot=loaded?.state||loaded; if(!snapshot)throw new Error('no-save'); restoreSnapshot(snapshot); }catch(err){ console.error(err); ui.saveInfo.textContent='ذخیره قابل بازیابی نیست.'; } }
 
   function actionAvailable(){ if(!state.running||paused)return false; if(state.phase==='AT_DEPOT')return nearDepot()&&kmh()<4; if(state.phase==='TO_SITE')return nearSite()&&kmh()<4; if(state.phase==='RETURNING')return nearDepot()&&kmh()<4; return false; }
   async function doAction(){
     if(!actionAvailable())return;
-    if(state.phase==='AT_DEPOT'){ state.phase='LOADING'; state.actionHold=0; state.speed=0; dispatch(`سفارش ${state.mission.volume} مترمکعب ${state.mission.type}. بارگیری شروع شد.`); await saveGame('loading-start'); }
+    if(state.phase==='AT_DEPOT'){ state.phase='LOADING'; state.actionHold=0; state.speed=0; dispatch(`سفارش ${state.mission.volume} مترمکعب ${state.mission.type} · ${state.mission.order?.difficulty||'NORMAL'}. بارگیری شروع شد.`); await saveGame('loading-start'); }
     else if(state.phase==='TO_SITE'){ state.phase='DELIVERING'; state.actionHold=0; state.speed=0; await saveGame('delivery-start'); }
-    else if(state.phase==='RETURNING'){ state.deliveries++; state.missionIndex=(state.missionIndex+1)%destinations.length; selectMission(); state.phase='AT_DEPOT'; dispatch('برگشتی کارخانه. سفارش بعدی آماده است.'); await saveGame('returned-to-depot'); }
+    else if(state.phase==='RETURNING'){ state.deliveries++; state.missionIndex+=1; selectMission(); state.phase='AT_DEPOT'; dispatch(`سفارش بعدی آماده است · ضریب پاداش ×${state.mission.order?.rewardMultiplier||1}.`); await saveGame('returned-to-depot'); }
   }
   async function completeLoading(){ state.phase='TO_SITE'; state.loaded=true; state.volume=state.mission.volume; resetConcreteState(); applyMissionVisuals(); dispatch(`بار آماده است؛ برو به ${state.mission.name}.`); await saveGame('loading-complete'); }
-  async function completeDelivery(){ const deliveryScore=500+Math.max(0,Math.round(state.time*4))+Math.round(state.quality*8)+Math.round(state.health*3); state.score+=deliveryScore; state.loaded=false; state.volume=0; state.phase='RETURNING'; state.actionHold=0; applyMissionVisuals(); dispatch(`تحویل ثبت شد: +${deliveryScore} امتیاز. حالا برگرد کارخانه.`); await saveGame('delivery-complete'); }
+  async function completeDelivery(){ const baseScore=500+Math.max(0,Math.round(state.time*4))+Math.round(state.quality*8)+Math.round(state.health*3); const deliveryScore=orderRuntime.deliveryScore({baseScore,rewardMultiplier:state.mission.order?.rewardMultiplier}); state.score+=deliveryScore; state.loaded=false; state.volume=0; state.phase='RETURNING'; state.actionHold=0; applyMissionVisuals(); dispatch(`تحویل ثبت شد: +${deliveryScore} امتیاز · ضریب ×${state.mission.order?.rewardMultiplier||1}. حالا برگرد کارخانه.`); await saveGame('delivery-complete'); }
   function endShift(reason='زمان شیفت تمام شد'){ state.running=false; state.speed=0; ui.hud.classList.add('hidden'); ui.resultScore.textContent=state.score.toLocaleString('fa-IR'); ui.resultText.textContent=`${reason}. تحویل موفق: ${state.deliveries} · برخورد: ${state.collisions} · سلامت نهایی: ${Math.round(state.health)}٪`; if(ui.result.showModal)ui.result.showModal(); }
 
   function setPaused(value){ if(!state.running)return; paused=value; Object.keys(input).forEach(k=>input[k]=false); if(paused){ state.speed=0; if(!ui.pause.open)ui.pause.showModal(); } else if(ui.pause.open)ui.pause.close(); }
@@ -194,7 +207,8 @@
     state.time-=dt; updateConcreteQuality(dt);
     if(state.time<=0){endShift('زمان مأموریت تمام شد');return;}
     if(state.quality<=18){endShift('کیفیت بتن به حد مردودی رسید');return;}
-    if(state.phase==='AT_DEPOT')setMissionUI('مرحله ۱ از ۴','بارگیری در کارخانه',`زیر بچینگ توقف کن. سفارش: ${state.mission.volume} m³ ${state.mission.type}`,0);
+    const difficulty=state.mission.order?.difficulty||'NORMAL';
+    if(state.phase==='AT_DEPOT')setMissionUI('مرحله ۱ از ۴',`بارگیری در کارخانه · ${difficulty}`,`زیر بچینگ توقف کن. سفارش: ${state.mission.volume} m³ ${state.mission.type} · پاداش ×${state.mission.order?.rewardMultiplier||1}`,0);
     else if(state.phase==='LOADING'){ state.actionHold+=dt; const p=Math.min(100,state.actionHold/3.2*100); setMissionUI('در حال بارگیری','بچینگ در حال بارگیری است','حرکت نکن؛ بارگیری تا تکمیل ادامه دارد.',p); if(p>=100)completeLoading(); }
     else if(state.phase==='TO_SITE'){ const dist=Math.round(distanceTo(state.mission.x,state.mission.z)); setMissionUI('مرحله ۲ از ۴',`حرکت به ${state.mission.name}`,`فاصله ${dist} متر · تازگی ${Math.round(state.freshness)}٪ · اسلامپ برآوردی ${Math.round(state.slumpEstimate)} mm`,Math.max(0,100-dist/3)); if(state.time<45&&performance.now()/1000-state.lastDispatch>12){state.lastDispatch=performance.now()/1000;dispatch('راننده! کمتر از ۴۵ ثانیه وقت داری؛ معطل نکن!');} }
     else if(state.phase==='DELIVERING'){ state.actionHold+=dt; const p=Math.min(100,state.actionHold/3.6*100); setMissionUI('مرحله ۳ از ۴','تخلیه بتن',`کیفیت ${Math.round(state.quality)}٪ · تازگی ${Math.round(state.freshness)}٪`,p); if(p>=100)completeDelivery(); }
@@ -208,7 +222,7 @@
     if(state.phase==='AT_DEPOT')ui.actionHint.textContent=available?'برای شروع بارگیری E را بزن':'وارد محدوده بچینگ شو و توقف کن'; else if(state.phase==='TO_SITE')ui.actionHint.textContent=available?'پارک انجام شد؛ E برای تخلیه':'داخل حلقه سبز پروژه توقف کن'; else if(state.phase==='RETURNING')ui.actionHint.textContent=available?'E برای سفارش بعدی':'به کارخانه برگرد'; else ui.actionHint.textContent='عملیات در حال انجام است…';
   }
 
-  async function startGame(){ if(ui.result.open)ui.result.close(); resetTruck(); state.running=true; paused=false; state.phase='AT_DEPOT'; state.missionIndex=0; state.score=0; state.deliveries=0; state.health=100; state.collisions=0; state.lastDispatch=0; selectMission(); ui.menu.classList.add('hidden'); ui.hud.classList.remove('hidden'); dispatch(`شیفت شروع شد. ${ui.playerName.value||'راننده طلوع'}، اول بار بزن.`); await saveGame('new-game'); }
+  async function startGame(){ if(ui.result.open)ui.result.close(); resetTruck(); state.running=true; paused=false; state.phase='AT_DEPOT'; state.missionIndex=0; state.score=0; state.deliveries=0; state.health=100; state.collisions=0; state.lastDispatch=0; selectMission(); ui.menu.classList.add('hidden'); ui.hud.classList.remove('hidden'); dispatch(`شیفت شروع شد. ${ui.playerName.value||'راننده طلوع'}، سفارش اول: ${state.mission.volume} m³ ${state.mission.type}.`); await saveGame('new-game'); }
 
   const keyMap={KeyW:'up',ArrowUp:'up',KeyS:'down',ArrowDown:'down',KeyA:'left',ArrowLeft:'left',KeyD:'right',ArrowRight:'right',Space:'brake'};
   addEventListener('keydown',e=>{ if(keyMap[e.code]&&!paused){input[keyMap[e.code]]=true;e.preventDefault();} if(e.repeat)return; if(e.code==='KeyP'||e.code==='Escape'){if(state.running)setPaused(!paused);e.preventDefault();return;} if(paused)return; if(e.code==='KeyE')doAction(); if(e.code==='KeyC')state.cameraMode=(state.cameraMode+1)%2; if(e.code==='KeyR'){resetTruck();state.health=Math.max(0,state.health-2);} });
@@ -217,7 +231,10 @@
 
   if(window.tolouDesktop){ ui.exit.classList.remove('hidden'); window.tolouDesktop.getAppInfo().then(info=>{if(info?.appVersion)gameVersion=info.appVersion;}); ui.exit.addEventListener('click',async()=>{setPaused(true);await saveGame('exit');window.tolouDesktop.confirmClose?.();}); window.tolouDesktop.onCloseRequested?.(async()=>{if(state.running){setPaused(true);await saveGame('window-close');}window.tolouDesktop.confirmClose?.();}); }
 
-  window.TolouGameTelemetry=Object.freeze({getConcrete:()=>({loaded:state.loaded,mixType:state.mission?.type||null,quality:state.quality,freshness:state.freshness,slumpEstimate:state.slumpEstimate,elapsedDeliveryTime:state.elapsedDeliveryTime,overspeedSeconds:state.overspeedSeconds})});
+  window.TolouGameTelemetry=Object.freeze({
+    getConcrete:()=>({loaded:state.loaded,mixType:state.mission?.type||null,quality:state.quality,freshness:state.freshness,slumpEstimate:state.slumpEstimate,elapsedDeliveryTime:state.elapsedDeliveryTime,overspeedSeconds:state.overspeedSeconds}),
+    getOrder:()=>state.mission?.order?{...state.mission.order}:null
+  });
 
   let last=performance.now(),autosaveClock=0;
   engine.runRenderLoop(()=>{ const now=performance.now(),dt=Math.min(.05,(now-last)/1000); last=now; collisionCooldown=Math.max(0,collisionCooldown-dt); if(state.running&&!paused){truckPhysics(dt);updateMission(dt);updateHUD();autosaveClock+=dt;if(autosaveClock>=30){autosaveClock=0;saveGame('periodic');}} cameraUpdate(dt); arrow.rotation.y+=dt*1.8; arrow.position.y=6.7+Math.sin(now/350)*.6; scene.render(); });

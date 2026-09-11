@@ -23,6 +23,7 @@
       mission: {
         missionIndex: Math.max(0, Math.floor(finite(runtime.state.missionIndex))),
         missionId: runtime.state.mission?.id || null,
+        order: runtime.state.mission?.order ? { ...runtime.state.mission.order } : null,
         phase: PHASES.has(runtime.state.phase) ? runtime.state.phase : 'AT_DEPOT',
         remainingTime: Math.max(0, finite(runtime.state.time)),
         actionProgress: Math.max(0, finite(runtime.state.actionHold)),
@@ -50,6 +51,7 @@
     const missionIndex = Math.floor(finite(snapshot.mission.missionIndex, -1));
     const mission = destinations[missionIndex % destinations.length];
     if (missionIndex < 0 || !mission || mission.id !== snapshot.mission.missionId) return { ok:false, reason:'unknown-mission' };
+    if (snapshot.mission.order && String(snapshot.mission.order.destinationId) !== String(mission.id)) return { ok:false, reason:'order-destination-mismatch' };
     if (!PHASES.has(snapshot.mission.phase)) return { ok:false, reason:'invalid-phase' };
     const p = snapshot.truck.position || {};
     const r = snapshot.truck.rotation || {};
