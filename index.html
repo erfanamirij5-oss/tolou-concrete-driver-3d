@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <meta name="theme-color" content="#102b39" />
+  <title>طلوع | راننده تراک‌میکسر</title>
+  <meta name="description" content="بازی سه‌بعدی حمل بتن طلوع؛ بارگیری، رانندگی، تحویل و بازگشت به کارخانه." />
+  <link rel="stylesheet" href="src/styles.css" />
+</head>
+<body>
+  <canvas id="renderCanvas"></canvas>
+
+  <section id="menu" class="menu">
+    <div class="menu-card">
+      <div class="eyebrow">TOLOU CONCRETE DRIVER 3D</div>
+      <h1>طلوع</h1>
+      <h2>راننده تراک‌میکسر</h2>
+      <p>بار بزن، بتن را سالم و به‌موقع به پروژه برسان، تخلیه کن و برای سفارش بعدی برگرد.</p>
+      <label>نام راننده<input id="playerName" maxlength="18" value="راننده طلوع" /></label>
+      <button id="startBtn" class="primary">شروع شیفت</button>
+      <div class="controls-copy">W/S گاز و ترمز · A/D فرمان · E عملیات · C دوربین · R ریست</div>
+    </div>
+  </section>
+
+  <main id="hud" class="hud hidden">
+    <header class="topbar">
+      <div class="brand"><b>طلوع</b><small>CONCRETE DRIVER</small></div>
+      <div class="stat"><span>زمان</span><strong id="timer">03:00</strong></div>
+      <div class="stat"><span>کیفیت</span><strong id="quality">100%</strong></div>
+      <div class="stat"><span>سلامت</span><strong id="health">100%</strong></div>
+      <div class="stat"><span>امتیاز</span><strong id="score">0</strong></div>
+    </header>
+
+    <aside class="mission">
+      <small id="missionStage">کارخانه</small>
+      <h3 id="missionTitle">زیر بچینگ قرار بگیر</h3>
+      <p id="missionText">برای بارگیری وارد محدوده مشخص‌شده شو.</p>
+      <div class="progress"><i id="missionProgress"></i></div>
+    </aside>
+
+    <section class="speedbox">
+      <strong id="speed">0</strong><span>km/h</span>
+    </section>
+
+    <section id="actionBox" class="action-box">
+      <button id="actionBtn" class="primary">E — عملیات</button>
+      <small id="actionHint">به محدوده مأموریت نزدیک شو</small>
+    </section>
+
+    <section id="dispatcher" class="dispatcher hidden">
+      <div class="face">👨🏻‍🦱</div>
+      <div><b>مسئول بارگیری</b><p id="dispatcherText">راننده! وقت داره می‌گذره!</p></div>
+    </section>
+  </main>
+
+  <dialog id="resultDialog">
+    <h2>پایان شیفت</h2>
+    <div class="result-score" id="resultScore">0</div>
+    <p id="resultText"></p>
+    <button id="restartBtn" class="primary">شروع مجدد</button>
+  </dialog>
+
+  <div id="loading" class="loading">در حال آماده‌سازی بازی…</div>
+
+  <script src="https://cdn.babylonjs.com/babylon.js"></script>
+  <script src="src/game.js"></script>
+</body>
+</html>
