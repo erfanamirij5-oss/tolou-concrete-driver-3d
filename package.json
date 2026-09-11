@@ -8,7 +8,7 @@
     "vendor:sync": "node scripts/sync-vendor.js",
     "electron:dev": "npm run vendor:sync && electron .",
     "start": "npm run electron:dev",
-    "check": "node --check src/game.js && node --check src/platform/persistence.js && node --check electron/main.js && node --check electron/preload.js && node --check electron/persistence.js && node --check scripts/sync-vendor.js",
+    "check": "node --check src/game.js && node --check src/platform/persistence.js && node --check src/persistence/session-state.js && node --check electron/main.js && node --check electron/preload.js && node --check electron/persistence.js && node --check scripts/sync-vendor.js",
     "pack": "npm run vendor:sync && electron-builder --dir",
     "dist:win": "npm run vendor:sync && electron-builder --win nsis --x64"
   },
@@ -21,24 +21,10 @@
     "appId": "ir.tolou.concretedriver",
     "productName": "Tolou Concrete Driver 3D",
     "asar": true,
-    "directories": {
-      "output": "dist"
-    },
-    "files": [
-      "index.html",
-      "src/**/*",
-      "vendor/**/*",
-      "electron/**/*",
-      "assets/**/*",
-      "package.json"
-    ],
+    "directories": { "output": "dist" },
+    "files": ["index.html","src/**/*","vendor/**/*","electron/**/*","assets/**/*","package.json"],
     "win": {
-      "target": [
-        {
-          "target": "nsis",
-          "arch": ["x64"]
-        }
-      ],
+      "target": [{ "target": "nsis", "arch": ["x64"] }],
       "artifactName": "TolouConcreteDriver-Setup-${version}.${ext}"
     },
     "nsis": {
