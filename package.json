@@ -1,0 +1,53 @@
+{
+  "name": "tolou-concrete-driver-3d",
+  "version": "0.2.0",
+  "description": "Tolou Concrete Driver 3D - persistent Windows-ready concrete logistics game",
+  "main": "electron/main.js",
+  "private": true,
+  "scripts": {
+    "vendor:sync": "node scripts/sync-vendor.js",
+    "electron:dev": "npm run vendor:sync && electron .",
+    "start": "npm run electron:dev",
+    "check": "node --check src/game.js && node --check src/platform/persistence.js && node --check electron/main.js && node --check electron/preload.js && node --check electron/persistence.js && node --check scripts/sync-vendor.js",
+    "pack": "npm run vendor:sync && electron-builder --dir",
+    "dist:win": "npm run vendor:sync && electron-builder --win nsis --x64"
+  },
+  "devDependencies": {
+    "babylonjs": "9.26.0",
+    "electron": "44.3.0",
+    "electron-builder": "26.15.3"
+  },
+  "build": {
+    "appId": "ir.tolou.concretedriver",
+    "productName": "Tolou Concrete Driver 3D",
+    "asar": true,
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "index.html",
+      "src/**/*",
+      "vendor/**/*",
+      "electron/**/*",
+      "assets/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        }
+      ],
+      "artifactName": "TolouConcreteDriver-Setup-${version}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Tolou Concrete Driver 3D",
+      "deleteAppDataOnUninstall": false
+    }
+  }
+}
