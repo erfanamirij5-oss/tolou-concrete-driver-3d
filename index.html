@@ -18,8 +18,10 @@
       <h2>راننده تراک‌میکسر</h2>
       <p>بار بزن، بتن را سالم و به‌موقع به پروژه برسان، تخلیه کن و برای سفارش بعدی برگرد.</p>
       <label>نام راننده<input id="playerName" maxlength="18" value="راننده طلوع" /></label>
-      <button id="startBtn" class="primary">شروع شیفت</button>
-      <div class="controls-copy">W/S گاز و ترمز · A/D فرمان · E عملیات · C دوربین · R ریست</div>
+      <button id="continueBtn" class="primary secondary hidden">ادامه بازی</button>
+      <button id="startBtn" class="primary">شروع بازی جدید</button>
+      <div id="saveInfo" class="save-info"></div>
+      <div class="controls-copy">W/S گاز و ترمز · A/D فرمان · E عملیات · C دوربین · P توقف · R ریست</div>
     </div>
   </section>
 
@@ -39,9 +41,7 @@
       <div class="progress"><i id="missionProgress"></i></div>
     </aside>
 
-    <section class="speedbox">
-      <strong id="speed">0</strong><span>km/h</span>
-    </section>
+    <section class="speedbox"><strong id="speed">0</strong><span>km/h</span></section>
 
     <section id="actionBox" class="action-box">
       <button id="actionBtn" class="primary">E — عملیات</button>
@@ -54,6 +54,15 @@
     </section>
   </main>
 
+  <dialog id="pauseDialog">
+    <h2>بازی متوقف شد</h2>
+    <p id="pauseStatus">زمان و کیفیت بتن تا زمان ادامه بازی ثابت می‌ماند.</p>
+    <button id="resumeBtn" class="primary">ادامه</button>
+    <button id="saveBtn" class="dialog-btn">ذخیره بازی</button>
+    <button id="mainMenuBtn" class="dialog-btn">ذخیره و بازگشت به منو</button>
+    <button id="exitBtn" class="dialog-btn danger hidden">ذخیره و خروج از بازی</button>
+  </dialog>
+
   <dialog id="resultDialog">
     <h2>پایان شیفت</h2>
     <div class="result-score" id="resultScore">0</div>
@@ -65,6 +74,7 @@
 
   <script src="vendor/babylon.js" onerror="this.onerror=null;this.src='https://cdn.babylonjs.com/babylon.js'"></script>
   <script src="src/platform/persistence.js"></script>
+  <script src="src/persistence/session-state.js"></script>
   <script src="src/game.js"></script>
 </body>
 </html>
