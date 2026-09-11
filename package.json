@@ -9,7 +9,8 @@
     "electron:dev": "npm run vendor:sync && electron .",
     "start": "npm run electron:dev",
     "test:quality": "node scripts/test-quality-model.js",
-    "check": "node --check src/game.js && node --check src/concrete/quality-model.js && node --check src/ui/minimap.js && node --check src/ui/operations-polish.js && node --check src/ui/quality-hud.js && node --check src/platform/persistence.js && node --check src/persistence/session-state.js && node --check electron/main.js && node --check electron/preload.js && node --check electron/persistence.js && node --check scripts/sync-vendor.js && node --check scripts/test-quality-model.js && npm run test:quality",
+    "test:progression": "node scripts/test-progression.js",
+    "check": "node --check src/game.js && node --check src/concrete/quality-model.js && node --check src/progression/career-profile.js && node --check src/ui/minimap.js && node --check src/ui/operations-polish.js && node --check src/ui/quality-hud.js && node --check src/ui/progression-hud.js && node --check src/platform/persistence.js && node --check src/persistence/session-state.js && node --check electron/main.js && node --check electron/preload.js && node --check electron/persistence.js && node --check scripts/sync-vendor.js && node --check scripts/test-quality-model.js && node --check scripts/test-progression.js && npm run test:quality && npm run test:progression",
     "pack": "npm run vendor:sync && electron-builder --dir",
     "dist:win": "npm run vendor:sync && electron-builder --win nsis --x64"
   },
