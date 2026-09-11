@@ -33,6 +33,7 @@ jobs:
           test -f electron/preload.js
           test -f electron/persistence.js
           test -f vendor/babylon.js
+          test -f scripts/verify-windows-install.ps1
           test -f docs/ARCHITECTURE.md
 
   windows-package-smoke:
@@ -44,5 +45,14 @@ jobs:
           node-version: 22
       - name: Install dependencies
         run: npm install --no-audit --no-fund
-      - name: Build unpacked Windows application
-        run: npm run pack
+      - name: Build Windows NSIS installer
+        run: npm run dist:win
+      - name: Install, launch, and uninstall packaged application
+        shell: powershell
+        run: ./scripts/verify-windows-install.ps1
+      - name: Upload RC installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: tolou-concrete-driver-windows-rc
+          path: dist/TolouConcreteDriver-Setup-*.exe
+          if-no-files-found: error

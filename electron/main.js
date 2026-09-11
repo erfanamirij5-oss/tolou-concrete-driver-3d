@@ -4,10 +4,20 @@ const path = require('node:path');
 const { app, BrowserWindow, ipcMain, shell } = require('electron');
 const persistence = require('./persistence');
 
+const smokeMode = process.argv.includes('--tolou-smoke-test');
 let mainWindow = null;
 let closeConfirmed = false;
 let closeRequested = false;
 let forceCloseTimer = null;
+let smokeTimer = null;
+
+function finishSmoke(exitCode, message) {
+  if (!smokeMode) return;
+  if (smokeTimer) clearTimeout(smokeTimer);
+  smokeTimer = null;
+  if (message) console.log(`[tolou-smoke] ${message}`);
+  app.exit(exitCode);
+}
 
 function createWindow() {
   closeConfirmed = false;
@@ -40,8 +50,19 @@ function createWindow() {
     if (current && url !== current) event.preventDefault();
   });
 
+  if (smokeMode) {
+    smokeTimer = setTimeout(() => finishSmoke(1, 'renderer load timed out'), 15000);
+    mainWindow.webContents.once('did-finish-load', () => finishSmoke(0, 'renderer loaded successfully'));
+    mainWindow.webContents.once('did-fail-load', (_event, errorCode, errorDescription) => {
+      finishSmoke(1, `renderer failed to load (${errorCode}: ${errorDescription})`);
+    });
+    mainWindow.webContents.once('render-process-gone', (_event, details) => {
+      finishSmoke(1, `renderer process exited unexpectedly (${details.reason})`);
+    });
+  }
+
   mainWindow.on('close', (event) => {
-    if (closeConfirmed) return;
+    if (smokeMode || closeConfirmed) return;
     event.preventDefault();
     if (closeRequested) return;
     closeRequested = true;
@@ -58,7 +79,9 @@ function createWindow() {
     mainWindow = null;
   });
 
-  mainWindow.once('ready-to-show', () => mainWindow.show());
+  mainWindow.once('ready-to-show', () => {
+    if (!smokeMode) mainWindow.show();
+  });
   mainWindow.loadFile(path.join(__dirname, '..', 'index.html'));
 }
 
@@ -86,7 +109,7 @@ app.whenReady().then(() => {
   registerIpc();
   createWindow();
   app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow();
+    if (!smokeMode && BrowserWindow.getAllWindows().length === 0) createWindow();
   });
 });
 
