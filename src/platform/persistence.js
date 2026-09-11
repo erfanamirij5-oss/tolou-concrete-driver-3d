@@ -50,14 +50,57 @@
     async remove(slot) { return window.tolouDesktop.deleteSave(slot); }
   }
 
+  class SerializedPersistence {
+    constructor(adapter) {
+      this.adapter = adapter;
+      this.queues = new Map();
+    }
+
+    enqueue(slot, task) {
+      if (!slot) return Promise.reject(new Error('slot-required'));
+      const previous = this.queues.get(slot) || Promise.resolve();
+      const next = previous.catch(() => {}).then(task);
+      const tracked = next.finally(() => {
+        if (this.queues.get(slot) === tracked) this.queues.delete(slot);
+      });
+      this.queues.set(slot, tracked);
+      return tracked;
+    }
+
+    async waitFor(slot) {
+      const pending = this.queues.get(slot);
+      if (pending) await pending.catch(() => {});
+    }
+
+    save(payload) {
+      const slot = payload?.slot;
+      return this.enqueue(slot, () => this.adapter.save(payload));
+    }
+
+    async load(slot) {
+      await this.waitFor(slot);
+      return this.adapter.load(slot);
+    }
+
+    async list() {
+      await Promise.all([...this.queues.values()].map(p => p.catch(() => {})));
+      return this.adapter.list();
+    }
+
+    remove(slot) {
+      return this.enqueue(slot, () => this.adapter.remove(slot));
+    }
+  }
+
   const adapter = window.tolouDesktop ? new ElectronPersistenceAdapter() : new BrowserPersistenceAdapter();
+  const persistence = new SerializedPersistence(adapter);
 
   window.TolouPersistence = Object.freeze({
     backend: window.tolouDesktop ? 'electron' : 'browser',
-    save: (payload) => adapter.save(payload),
-    load: (slot) => adapter.load(slot),
-    list: () => adapter.list(),
-    remove: (slot) => adapter.remove(slot),
-    create: () => adapter
+    save: (payload) => persistence.save(payload),
+    load: (slot) => persistence.load(slot),
+    list: () => persistence.list(),
+    remove: (slot) => persistence.remove(slot),
+    create: () => new SerializedPersistence(window.tolouDesktop ? new ElectronPersistenceAdapter() : new BrowserPersistenceAdapter())
   });
 })();
