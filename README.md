@@ -2,15 +2,17 @@
 
 بازی سه‌بعدی «طلوع» برای شبیه‌سازی چرخه حمل بتن آماده؛ از کارخانه و بارگیری تا رانندگی، تحویل، تخلیه و بازگشت برای مأموریت بعدی.
 
-## Product target
+## Current release
 
-هدف اصلی محصول از این نسخه به بعد **Windows Desktop Game** است. هسته بازی همچنان HTML5/JavaScript/WebGL/Babylon.js باقی می‌ماند و Electron پوسته دسکتاپ، دسترسی امن به persistence و بسته‌بندی Windows را فراهم می‌کند.
+نسخه جاری محصول: **v0.2.0**
+
+هدف اصلی این نسخه **Windows Desktop Game** است. هسته بازی HTML5/JavaScript/WebGL/Babylon.js باقی مانده و Electron پوسته دسکتاپ، persistence امن و بسته‌بندی Windows را فراهم می‌کند.
 
 ## Game loop
 
 `Order → Load → Drive → Park → Deliver → Return → Next Order`
 
-هدف پروژه ساخت یک بازی Arcade/Light Simulation است، نه صرفاً نمایش یک کامیون سه‌بعدی. بازیکن باید تحت محدودیت زمان، کیفیت بتن، سلامت خودرو و دقت تحویل تصمیم بگیرد.
+هدف پروژه ساخت یک بازی Arcade/Light Simulation است، نه صرفاً نمایش یک کامیون سه‌بعدی. بازیکن تحت محدودیت زمان، کیفیت بتن، سلامت خودرو و دقت تحویل تصمیم می‌گیرد.
 
 ## Technology
 
@@ -32,7 +34,7 @@ npm install
 npm run electron:dev
 ```
 
-دستور بالا Babylon.js را از package نصب‌شده به `vendor/babylon.js` کپی می‌کند و بازی را داخل Electron اجرا می‌کند. نسخه desktop در runtime به CDN وابسته نیست.
+این دستور Babylon.js را از package نصب‌شده به `vendor/babylon.js` کپی می‌کند و بازی را داخل Electron اجرا می‌کند. نسخه desktop در runtime به CDN وابسته نیست.
 
 ## Windows package smoke build
 
@@ -70,9 +72,9 @@ http://localhost:8080
 
 اگر `vendor/babylon.js` موجود نباشد، نسخه وب برای compatibility به CDN Babylon fallback می‌کند. Build ویندوز همیشه vendor محلی را ایجاد می‌کند.
 
-## Persistence foundation
+## Persistence
 
-لایه platform-neutral اضافه شده است:
+لایه platform-neutral فعال است:
 
 ```text
 Game Renderer
@@ -82,9 +84,31 @@ TolouPersistence
     └── BrowserPersistenceAdapter  → localStorage
 ```
 
-در Electron، فایل‌های save زیر مسیر استاندارد `app.getPath('userData')/saves` ذخیره می‌شوند. نام slotها whitelist شده، اندازه payload محدود است و save قبلی به‌عنوان backup نگهداری می‌شود.
+در Electron، saveها زیر مسیر استاندارد `app.getPath('userData')/saves` ذخیره می‌شوند. نام slotها whitelist شده، اندازه payload محدود است و save قبلی به‌عنوان backup نگهداری می‌شود.
 
-> این branch فقط foundation persistence را فراهم می‌کند. اتصال state واقعی بازی، Continue، autosave و restore دقیق مأموریت در milestone بعدی (`feat/save-load-v1`) انجام می‌شود.
+در v0.2.0 persistence دیگر فقط foundation نیست و به چرخه واقعی بازی متصل است. قابلیت‌های فعال شامل موارد زیر است:
+
+- autosave و Continue
+- restore دقیق مأموریت و order فعال
+- persistence جداگانه career/profile
+- صف serialized برای Save/Load/Remove هر slot
+- محافظت New Game / Restart در برابر overwrite ناخواسته checkpoint قابل بازیابی
+- نگهداری Game Over terminal result جدا از autosave قابل بازیابی
+- حفظ داده کاربر هنگام uninstall بر اساس NSIS configuration
+
+## Gameplay systems in v0.2.0
+
+- Windows / Electron desktop foundation
+- Save / Load / Continue
+- controlled shutdown persistence
+- collision system
+- GPS / mini-map
+- loading and delivery operation polish
+- deterministic concrete quality model V1
+- career progression V1
+- deterministic orders engine and runtime integration
+- Windows NSIS installer validation
+- installed Windows UAT gate
 
 ## Controls
 
@@ -96,16 +120,15 @@ TolouPersistence
 - `C` تغییر دوربین
 - `R` ریست کامیون
 
-## Development order
+## Release validation
 
-1. Windows / Electron foundation
-2. Save / Load / Continue
-3. Pause / controlled shutdown
-4. Truck Physics V2
-5. Collision system
-6. GPS / mini-map
-7. Concrete gameplay model
-8. Missions / progression
-9. Visual and audio polish
+Release Candidate ویندوز باید از این گیت‌ها عبور کند:
+
+1. static checks و regression tests
+2. ساخت NSIS installer واقعی
+3. نصب silent در Windows CI
+4. اجرای نسخه نصب‌شده و تأیید renderer boot
+5. uninstall smoke validation
+6. Installed Windows UAT واقعی
 
 جزئیات معماری در [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) آمده است.
