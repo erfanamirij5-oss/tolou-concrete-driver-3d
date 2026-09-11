@@ -2,7 +2,7 @@ name: Quality
 
 on:
   push:
-    branches: [main]
+    branches: [main, feat/**]
   pull_request:
 
 permissions:
@@ -13,11 +13,35 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install dependencies
+        run: npm install --ignore-scripts --no-audit --no-fund
       - name: Check JavaScript syntax
-        run: node --check src/game.js
+        run: npm run check
+      - name: Prepare offline runtime vendor
+        run: npm run vendor:sync
       - name: Verify required files
         run: |
           test -f index.html
           test -f src/styles.css
           test -f src/game.js
+          test -f src/platform/persistence.js
+          test -f electron/main.js
+          test -f electron/preload.js
+          test -f electron/persistence.js
+          test -f vendor/babylon.js
           test -f docs/ARCHITECTURE.md
+
+  windows-package-smoke:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+      - name: Build unpacked Windows application
+        run: npm run pack
