@@ -1,0 +1,11 @@
+'use strict';
+const assert = require('assert');
+const fs = require('fs');
+const html = fs.readFileSync('index.html','utf8');
+const generator = html.indexOf('src/missions/order-generator.js');
+const runtime = html.indexOf('src/missions/order-runtime.js');
+const game = html.indexOf('src/game.js');
+assert(generator >= 0, 'order generator must be loaded');
+assert(runtime > generator, 'order runtime must load after generator');
+assert(game > runtime, 'game must load after order runtime');
+console.log('order bootstrap test passed');
