@@ -4,19 +4,18 @@
   const PREFIX = 'tolou-save:';
 
   class BrowserPersistenceAdapter {
-    async save(slot, data) {
-      localStorage.setItem(`${PREFIX}${slot}`, JSON.stringify(data));
+    async save(payload) {
+      const { slot, state } = payload || {};
+      if (!slot || !state) throw new Error('Invalid save payload');
+      localStorage.setItem(`${PREFIX}${slot}`, JSON.stringify(state));
       return { ok: true, slot, backend: 'localStorage' };
     }
 
     async load(slot) {
       const raw = localStorage.getItem(`${PREFIX}${slot}`);
-      if (!raw) return { ok: false, slot, reason: 'not-found' };
-      try {
-        return { ok: true, slot, source: 'primary', data: JSON.parse(raw), backend: 'localStorage' };
-      } catch {
-        return { ok: false, slot, reason: 'corrupt', backend: 'localStorage' };
-      }
+      if (!raw) return null;
+      try { return { slot, state: JSON.parse(raw), source: 'primary', backend: 'localStorage' }; }
+      catch { return null; }
     }
 
     async list() {
@@ -35,27 +34,30 @@
   }
 
   class ElectronPersistenceAdapter {
-    async save(slot, data) {
-      return window.tolouDesktop.save({ slot, data });
+    async save(payload) {
+      const { slot, state } = payload || {};
+      if (!slot || !state) throw new Error('Invalid save payload');
+      return window.tolouDesktop.save({ slot, data: state });
     }
 
     async load(slot) {
-      return window.tolouDesktop.load(slot);
+      const result = await window.tolouDesktop.load(slot);
+      if (!result || result.ok === false) return null;
+      return { slot, state: result.data ?? result.state ?? result, source: result.source || 'primary', backend: 'electron' };
     }
 
-    async list() {
-      return window.tolouDesktop.listSaves();
-    }
-
-    async remove(slot) {
-      return window.tolouDesktop.deleteSave(slot);
-    }
+    async list() { return window.tolouDesktop.listSaves(); }
+    async remove(slot) { return window.tolouDesktop.deleteSave(slot); }
   }
+
+  const adapter = window.tolouDesktop ? new ElectronPersistenceAdapter() : new BrowserPersistenceAdapter();
 
   window.TolouPersistence = Object.freeze({
     backend: window.tolouDesktop ? 'electron' : 'browser',
-    create() {
-      return window.tolouDesktop ? new ElectronPersistenceAdapter() : new BrowserPersistenceAdapter();
-    }
+    save: (payload) => adapter.save(payload),
+    load: (slot) => adapter.load(slot),
+    list: () => adapter.list(),
+    remove: (slot) => adapter.remove(slot),
+    create: () => adapter
   });
 })();
