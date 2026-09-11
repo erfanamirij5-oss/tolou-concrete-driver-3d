@@ -44,19 +44,32 @@
     white:mat('whiteMat',new BABYLON.Color3(.92,.93,.91)), dark:mat('darkMat',new BABYLON.Color3(.08,.09,.1))
   };
 
+  const colliders=[];
+  function addBoxCollider(x,z,w,d,label='structure',padding=.25){
+    colliders.push({type:'box',x,z,halfX:w/2+padding,halfZ:d/2+padding,label});
+  }
+  function addCircleCollider(x,z,r,label='structure',padding=.2){
+    colliders.push({type:'circle',x,z,r:r+padding,label});
+  }
+
   function box(name,pos,scale,material,parent=null){ const m=BABYLON.MeshBuilder.CreateBox(name,{width:scale.x,height:scale.y,depth:scale.z},scene); m.position.copyFrom(pos); m.material=material; if(parent)m.parent=parent; return m; }
   function cyl(name,pos,diameter,height,material,parent=null){ const m=BABYLON.MeshBuilder.CreateCylinder(name,{diameter,height,tessellation:20},scene); m.position.copyFrom(pos); m.material=material; if(parent)m.parent=parent; return m; }
   const ground=BABYLON.MeshBuilder.CreateGround('ground',{width:500,height:500},scene); ground.material=mats.ground;
   const road=(x,z,w,d)=>box('road',new BABYLON.Vector3(x,.08,z),new BABYLON.Vector3(w,.16,d),mats.road);
   road(0,0,28,430); road(0,0,430,28); road(-150,-110,28,210); road(145,110,28,210); road(-75,-170,170,28); road(75,170,170,28);
-  const building=(x,z,w,h,d,material=mats.concrete)=>box('building',new BABYLON.Vector3(x,h/2,z),new BABYLON.Vector3(w,h,d),material);
-  for(let i=0;i<20;i++){ const side=i%2?1:-1; building(side*(48+(i%3)*22),-180+i*19,22,12+(i%4)*7,20,i%5===0?mats.white:mats.concrete); }
+  const building=(x,z,w,h,d,material=mats.concrete,label='building')=>{
+    addBoxCollider(x,z,w,d,label,.3);
+    return box('building',new BABYLON.Vector3(x,h/2,z),new BABYLON.Vector3(w,h,d),material);
+  };
+  for(let i=0;i<20;i++){ const side=i%2?1:-1; building(side*(48+(i%3)*22),-180+i*19,22,12+(i%4)*7,20,i%5===0?mats.white:mats.concrete,`city-${i}`); }
 
   const depot={x:-150,z:-182,r:16};
-  building(-174,-184,32,16,30,mats.blue);
+  building(-174,-184,32,16,30,mats.blue,'depot-building');
   box('batchTower',new BABYLON.Vector3(-147,17,-184),new BABYLON.Vector3(13,34,13),mats.concrete);
   cyl('silo1',new BABYLON.Vector3(-165,20,-160),12,36,mats.white);
   cyl('silo2',new BABYLON.Vector3(-149,20,-160),12,36,mats.white);
+  addCircleCollider(-165,-160,6,'silo-1',.35);
+  addCircleCollider(-149,-160,6,'silo-2',.35);
   box('hopper',new BABYLON.Vector3(-147,7,-184),new BABYLON.Vector3(17,2,15),mats.amber);
 
   const destinations=[
@@ -66,7 +79,7 @@
     {id:'yard',name:'سوله صنعتی',type:'بتن کف صنعتی',x:94,z:-166,r:20,volume:9,time:215},
     {id:'school',name:'پروژه مدرسه',type:'بتن معمولی',x:-172,z:56,r:18,volume:5,time:170}
   ];
-  destinations.forEach((d,i)=>building(d.x+20,d.z+12,24,14+i*4,24,i%2?mats.white:mats.concrete));
+  destinations.forEach((d,i)=>building(d.x+20,d.z+12,24,14+i*4,24,i%2?mats.white:mats.concrete,`site-${d.id}`));
   function makeZone(name,x,z,r,material){ const ring=BABYLON.MeshBuilder.CreateTorus(name,{diameter:r*1.7,thickness:.65,tessellation:40},scene); ring.rotation.x=Math.PI/2; ring.position.set(x,.42,z); ring.material=material; return ring; }
   makeZone('depotZone',depot.x,depot.z,depot.r,mats.amber);
   const siteZones=destinations.map(d=>makeZone(`zone_${d.id}`,d.x,d.z,d.r,mats.green)); siteZones.forEach(z=>z.setEnabled(false));
@@ -92,6 +105,16 @@
     steerAtSpeedFloor:.34,
     wheelRadius:.525,
     lowSpeedDeadband:.025
+  };
+
+  const COLLISION={
+    probeRadius:1.65,
+    frontOffset:2.25,
+    rearOffset:-1.85,
+    minDamage:3,
+    maxDamage:12,
+    minScoreLoss:45,
+    maxScoreLoss:180
   };
 
   const state={running:false,phase:'AT_DEPOT',missionIndex:0,mission:null,time:180,score:0,deliveries:0,quality:100,health:100,loaded:false,volume:0,speed:0,steer:0,cameraMode:0,actionHold:0,collisions:0,lastDispatch:0};
@@ -145,9 +168,51 @@
   async function pauseAndSave(){ setPaused(true); ui.pauseStatus.textContent='در حال ذخیره…'; const ok=await saveGame('manual'); ui.pauseStatus.textContent=ok?'بازی با موفقیت ذخیره شد.':'ذخیره بازی ناموفق بود.'; }
   async function saveAndMenu(){ setPaused(true); await saveGame('main-menu'); if(ui.pause.open)ui.pause.close(); state.running=false; ui.hud.classList.add('hidden'); ui.menu.classList.remove('hidden'); await refreshContinue(); }
 
-  function clampWorld(){ const lim=224; let hit=false; if(truck.position.x>lim){truck.position.x=lim;hit=true} if(truck.position.x<-lim){truck.position.x=-lim;hit=true} if(truck.position.z>lim){truck.position.z=lim;hit=true} if(truck.position.z<-lim){truck.position.z=-lim;hit=true} if(hit)collisionPenalty(); }
+  function clampWorld(){ const lim=224; let hit=false; if(truck.position.x>lim){truck.position.x=lim;hit=true} if(truck.position.x<-lim){truck.position.x=-lim;hit=true} if(truck.position.z>lim){truck.position.z=lim;hit=true} if(truck.position.z<-lim){truck.position.z=-lim;hit=true} if(hit)collisionPenalty(1,'مرز نقشه'); }
   let collisionCooldown=0;
-  function collisionPenalty(){ if(collisionCooldown>0)return; collisionCooldown=1.1; state.health=Math.max(0,state.health-7); state.score=Math.max(0,state.score-80); state.collisions++; state.speed*=-.12; dispatch('برخورد! سلامت خودرو و امتیاز کم شد.'); if(state.health<=0)endShift('کامیون از سرویس خارج شد'); }
+
+  function circleHitsBox(px,pz,r,c){
+    const nx=Math.max(c.x-c.halfX,Math.min(px,c.x+c.halfX));
+    const nz=Math.max(c.z-c.halfZ,Math.min(pz,c.z+c.halfZ));
+    const dx=px-nx, dz=pz-nz;
+    return dx*dx+dz*dz < r*r;
+  }
+  function circleHitsCircle(px,pz,r,c){
+    const dx=px-c.x, dz=pz-c.z;
+    const rr=r+c.r;
+    return dx*dx+dz*dz < rr*rr;
+  }
+  function colliderAt(px,pz,r){
+    for(const c of colliders){
+      if(c.type==='box' ? circleHitsBox(px,pz,r,c) : circleHitsCircle(px,pz,r,c)) return c;
+    }
+    return null;
+  }
+  function truckCollision(){
+    const s=Math.sin(truck.rotation.y), c=Math.cos(truck.rotation.y);
+    const probes=[
+      {x:truck.position.x+s*COLLISION.frontOffset,z:truck.position.z+c*COLLISION.frontOffset},
+      {x:truck.position.x+s*COLLISION.rearOffset,z:truck.position.z+c*COLLISION.rearOffset}
+    ];
+    for(const p of probes){
+      const hit=colliderAt(p.x,p.z,COLLISION.probeRadius);
+      if(hit)return hit;
+    }
+    return null;
+  }
+  function collisionPenalty(severity=1,label='مانع'){
+    if(collisionCooldown>0)return;
+    collisionCooldown=1.0;
+    const t=Math.max(0,Math.min(1,severity));
+    const damage=Math.round(COLLISION.minDamage+(COLLISION.maxDamage-COLLISION.minDamage)*t);
+    const scoreLoss=Math.round(COLLISION.minScoreLoss+(COLLISION.maxScoreLoss-COLLISION.minScoreLoss)*t);
+    state.health=Math.max(0,state.health-damage);
+    state.score=Math.max(0,state.score-scoreLoss);
+    state.collisions++;
+    state.speed*=-.08;
+    dispatch(`برخورد با ${label}! ${damage}٪ آسیب و ${scoreLoss} امتیاز جریمه.`);
+    if(state.health<=0)endShift('کامیون از سرویس خارج شد');
+  }
 
   function approach(value,target,maxDelta){ if(value<target)return Math.min(value+maxDelta,target); if(value>target)return Math.max(value-maxDelta,target); return value; }
   function currentPhysics(){ return state.loaded ? PHYSICS.loaded : PHYSICS.empty; }
@@ -155,7 +220,6 @@
     const p=currentPhysics();
     const throttle=input.up;
     const reverse=input.down;
-    const direction=Math.sign(state.speed);
     const speedRatio=Math.min(1,Math.abs(state.speed)/Math.max(1,p.maxForward));
 
     if(throttle){
@@ -179,6 +243,10 @@
     state.steer=approach(state.steer,steerTarget,p.steerRate*dt);
     if(!steerInput) state.steer=approach(state.steer,0,p.steerRate*1.25*dt);
 
+    const previousPosition=truck.position.clone();
+    const previousYaw=truck.rotation.y;
+    const impactSpeed=Math.abs(state.speed);
+
     if(Math.abs(state.speed)>.03){
       const yawRate=(state.speed/PHYSICS.wheelBase)*Math.tan(state.steer);
       truck.rotation.y+=yawRate*dt;
@@ -186,6 +254,14 @@
 
     const fwd=new BABYLON.Vector3(Math.sin(truck.rotation.y),0,Math.cos(truck.rotation.y));
     truck.position.addInPlace(fwd.scale(state.speed*dt));
+
+    const hit=truckCollision();
+    if(hit){
+      truck.position.copyFrom(previousPosition);
+      truck.rotation.y=previousYaw;
+      const severity=Math.min(1,impactSpeed/currentPhysics().maxForward);
+      collisionPenalty(severity,hit.label);
+    }
 
     wheelSpin+=state.speed*dt/PHYSICS.wheelRadius;
     wheels.forEach(w=>{ w.mesh.rotation.x=wheelSpin; if(w.front)w.pivot.rotation.y=-state.steer; });
