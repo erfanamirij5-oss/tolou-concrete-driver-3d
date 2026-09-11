@@ -41,6 +41,12 @@
       <div class="progress"><i id="missionProgress"></i></div>
     </aside>
 
+    <aside class="gps-panel" aria-label="GPS و مینی‌مپ">
+      <div class="gps-head"><b id="gpsTarget">کارخانه</b><span id="gpsDistance">0 m</span></div>
+      <canvas id="miniMapCanvas" width="220" height="220"></canvas>
+      <div class="gps-foot"><span>جهت</span><strong id="gpsBearing">شمال</strong></div>
+    </aside>
+
     <section class="speedbox"><strong id="speed">0</strong><span>km/h</span></section>
 
     <section id="actionBox" class="action-box">
@@ -76,5 +82,6 @@
   <script src="src/platform/persistence.js"></script>
   <script src="src/persistence/session-state.js"></script>
   <script src="src/game.js"></script>
+  <script src="src/ui/minimap.js"></script>
 </body>
 </html>
