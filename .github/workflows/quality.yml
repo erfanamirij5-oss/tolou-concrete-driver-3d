@@ -28,6 +28,7 @@ jobs:
           test -f src/styles.css
           test -f src/game.js
           test -f src/platform/persistence.js
+          test -f src/persistence/session-state.js
           test -f electron/main.js
           test -f electron/preload.js
           test -f electron/persistence.js
