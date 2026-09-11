@@ -11,6 +11,7 @@
 
   const persistence = window.TolouPersistence;
   const sessionCodec = window.TolouSessionState;
+  const concreteQuality = window.TolouConcreteQuality;
   const AUTOSAVE_SLOT = 'autosave';
   let gameVersion = '0.2.0';
   let paused = false;
@@ -18,6 +19,10 @@
 
   if (!window.BABYLON || !BABYLON.Engine.isSupported()) {
     ui.loading.textContent = 'WebGL/Babylon.js در این سیستم قابل اجرا نیست.';
+    return;
+  }
+  if (!concreteQuality) {
+    ui.loading.textContent = 'مدل کیفیت بتن بارگذاری نشده است.';
     return;
   }
 
@@ -45,22 +50,15 @@
   };
 
   const colliders=[];
-  function addBoxCollider(x,z,w,d,label='structure',padding=.25){
-    colliders.push({type:'box',x,z,halfX:w/2+padding,halfZ:d/2+padding,label});
-  }
-  function addCircleCollider(x,z,r,label='structure',padding=.2){
-    colliders.push({type:'circle',x,z,r:r+padding,label});
-  }
+  function addBoxCollider(x,z,w,d,label='structure',padding=.25){ colliders.push({type:'box',x,z,halfX:w/2+padding,halfZ:d/2+padding,label}); }
+  function addCircleCollider(x,z,r,label='structure',padding=.2){ colliders.push({type:'circle',x,z,r:r+padding,label}); }
 
   function box(name,pos,scale,material,parent=null){ const m=BABYLON.MeshBuilder.CreateBox(name,{width:scale.x,height:scale.y,depth:scale.z},scene); m.position.copyFrom(pos); m.material=material; if(parent)m.parent=parent; return m; }
   function cyl(name,pos,diameter,height,material,parent=null){ const m=BABYLON.MeshBuilder.CreateCylinder(name,{diameter,height,tessellation:20},scene); m.position.copyFrom(pos); m.material=material; if(parent)m.parent=parent; return m; }
   const ground=BABYLON.MeshBuilder.CreateGround('ground',{width:500,height:500},scene); ground.material=mats.ground;
   const road=(x,z,w,d)=>box('road',new BABYLON.Vector3(x,.08,z),new BABYLON.Vector3(w,.16,d),mats.road);
   road(0,0,28,430); road(0,0,430,28); road(-150,-110,28,210); road(145,110,28,210); road(-75,-170,170,28); road(75,170,170,28);
-  const building=(x,z,w,h,d,material=mats.concrete,label='building')=>{
-    addBoxCollider(x,z,w,d,label,.3);
-    return box('building',new BABYLON.Vector3(x,h/2,z),new BABYLON.Vector3(w,h,d),material);
-  };
+  const building=(x,z,w,h,d,material=mats.concrete,label='building')=>{ addBoxCollider(x,z,w,d,label,.3); return box('building',new BABYLON.Vector3(x,h/2,z),new BABYLON.Vector3(w,h,d),material); };
   for(let i=0;i<20;i++){ const side=i%2?1:-1; building(side*(48+(i%3)*22),-180+i*19,22,12+(i%4)*7,20,i%5===0?mats.white:mats.concrete,`city-${i}`); }
 
   const depot={x:-150,z:-182,r:16};
@@ -68,8 +66,7 @@
   box('batchTower',new BABYLON.Vector3(-147,17,-184),new BABYLON.Vector3(13,34,13),mats.concrete);
   cyl('silo1',new BABYLON.Vector3(-165,20,-160),12,36,mats.white);
   cyl('silo2',new BABYLON.Vector3(-149,20,-160),12,36,mats.white);
-  addCircleCollider(-165,-160,6,'silo-1',.35);
-  addCircleCollider(-149,-160,6,'silo-2',.35);
+  addCircleCollider(-165,-160,6,'silo-1',.35); addCircleCollider(-149,-160,6,'silo-2',.35);
   box('hopper',new BABYLON.Vector3(-147,7,-184),new BABYLON.Vector3(17,2,15),mats.amber);
 
   const destinations=[
@@ -100,31 +97,20 @@
   const PHYSICS={
     empty:{maxForward:13.2,maxReverse:4.8,accel:5.9,reverseAccel:3.9,brake:9.4,rolling:1.05,drag:.012,steerRate:2.8,maxSteer:.52},
     loaded:{maxForward:11.4,maxReverse:4.1,accel:4.0,reverseAccel:3.0,brake:7.2,rolling:.9,drag:.014,steerRate:2.1,maxSteer:.43},
-    handbrake:14.5,
-    wheelBase:4.65,
-    steerAtSpeedFloor:.34,
-    wheelRadius:.525,
-    lowSpeedDeadband:.025
+    handbrake:14.5,wheelBase:4.65,steerAtSpeedFloor:.34,wheelRadius:.525,lowSpeedDeadband:.025
   };
+  const COLLISION={probeRadius:1.65,frontOffset:2.25,rearOffset:-1.85,minDamage:3,maxDamage:12,minScoreLoss:45,maxScoreLoss:180};
 
-  const COLLISION={
-    probeRadius:1.65,
-    frontOffset:2.25,
-    rearOffset:-1.85,
-    minDamage:3,
-    maxDamage:12,
-    minScoreLoss:45,
-    maxScoreLoss:180
-  };
-
-  const state={running:false,phase:'AT_DEPOT',missionIndex:0,mission:null,time:180,score:0,deliveries:0,quality:100,health:100,loaded:false,volume:0,speed:0,steer:0,cameraMode:0,actionHold:0,collisions:0,lastDispatch:0};
+  const state={running:false,phase:'AT_DEPOT',missionIndex:0,mission:null,time:180,score:0,deliveries:0,quality:100,freshness:100,slumpEstimate:100,elapsedDeliveryTime:0,overspeedSeconds:0,health:100,loaded:false,volume:0,speed:0,steer:0,cameraMode:0,actionHold:0,collisions:0,lastDispatch:0};
   const input={up:false,down:false,left:false,right:false,brake:false};
   let wheelSpin=0;
 
+  function applyConcreteState(q){ state.quality=q.quality; state.freshness=q.freshness; state.slumpEstimate=q.slumpEstimate; state.elapsedDeliveryTime=q.elapsedDeliveryTime; state.overspeedSeconds=q.overspeedSeconds||0; }
+  function resetConcreteState(){ applyConcreteState(concreteQuality.createState(state.mission?.type)); }
   function resetTruck(){ truck.position.set(-150,.1,-202); truck.rotation.set(0,0,0); state.speed=0; state.steer=0; wheelSpin=0; }
   function updateNavTarget(x,z){ arrow.position.x=x; arrow.position.z=z; }
   function applyMissionVisuals(){ siteZones.forEach((z,i)=>z.setEnabled(i===state.missionIndex%destinations.length)); if(state.phase==='TO_SITE'||state.phase==='DELIVERING')updateNavTarget(state.mission.x,state.mission.z); else updateNavTarget(depot.x,depot.z); }
-  function selectMission(){ state.mission=destinations[state.missionIndex%destinations.length]; state.time=state.mission.time; state.quality=100; state.loaded=false; state.volume=0; state.actionHold=0; applyMissionVisuals(); }
+  function selectMission(){ state.mission=destinations[state.missionIndex%destinations.length]; state.time=state.mission.time; state.loaded=false; state.volume=0; state.actionHold=0; resetConcreteState(); applyMissionVisuals(); }
   resetTruck(); selectMission();
 
   const distanceTo=(x,z)=>Math.hypot(truck.position.x-x,truck.position.z-z);
@@ -143,12 +129,11 @@
     catch(err){ console.error('Save failed',err); if(ui.pauseStatus)ui.pauseStatus.textContent='ذخیره بازی ناموفق بود.'; return false; }
     finally{ saveInFlight=null; }
   }
-  async function refreshContinue(){
-    try{ const loaded=await persistence.load(AUTOSAVE_SLOT); const snapshot=loaded?.state||loaded; if(!snapshot)return; const check=sessionCodec.validate(snapshot,destinations); if(!check.ok)return; ui.continueBtn.classList.remove('hidden'); ui.saveInfo.textContent=`ذخیره موجود · ${snapshot.mission?.phase||''} · امتیاز ${snapshot.mission?.score||0}`; }catch(_err){}
-  }
+  async function refreshContinue(){ try{ const loaded=await persistence.load(AUTOSAVE_SLOT); const snapshot=loaded?.state||loaded; if(!snapshot)return; const check=sessionCodec.validate(snapshot,destinations); if(!check.ok)return; ui.continueBtn.classList.remove('hidden'); ui.saveInfo.textContent=`ذخیره موجود · ${snapshot.mission?.phase||''} · امتیاز ${snapshot.mission?.score||0}`; }catch(_err){} }
   function restoreSnapshot(snapshot){
     const check=sessionCodec.validate(snapshot,destinations); if(!check.ok)throw new Error(check.reason);
-    state.missionIndex=snapshot.mission.missionIndex; state.mission=destinations[state.missionIndex%destinations.length]; state.phase=snapshot.mission.phase; state.time=snapshot.mission.remainingTime; state.actionHold=snapshot.mission.actionProgress||0; state.score=snapshot.mission.score; state.deliveries=snapshot.mission.deliveries; state.collisions=snapshot.mission.collisions; state.quality=snapshot.concrete.quality; state.loaded=snapshot.concrete.loaded; state.volume=snapshot.concrete.loadedVolume; state.health=snapshot.truck.health; state.speed=snapshot.truck.speed; state.steer=snapshot.truck.steeringAngle; state.cameraMode=snapshot.settings?.cameraMode||0;
+    state.missionIndex=snapshot.mission.missionIndex; state.mission=destinations[state.missionIndex%destinations.length]; state.phase=snapshot.mission.phase; state.time=snapshot.mission.remainingTime; state.actionHold=snapshot.mission.actionProgress||0; state.score=snapshot.mission.score; state.deliveries=snapshot.mission.deliveries; state.collisions=snapshot.mission.collisions; state.loaded=snapshot.concrete.loaded; state.volume=snapshot.concrete.loadedVolume; state.health=snapshot.truck.health; state.speed=snapshot.truck.speed; state.steer=snapshot.truck.steeringAngle; state.cameraMode=snapshot.settings?.cameraMode||0;
+    applyConcreteState(concreteQuality.hydrate(snapshot.concrete,state.mission.type));
     truck.position.set(snapshot.truck.position.x,snapshot.truck.position.y,snapshot.truck.position.z); truck.rotation.set(snapshot.truck.rotation.x,snapshot.truck.rotation.y,snapshot.truck.rotation.z); ui.playerName.value=snapshot.player?.name||'راننده طلوع'; state.running=true; paused=false; applyMissionVisuals(); ui.menu.classList.add('hidden'); ui.hud.classList.remove('hidden'); updateHUD(); dispatch('ذخیره بازی بازیابی شد؛ از همان نقطه ادامه بده.');
   }
   async function continueGame(){ try{ const loaded=await persistence.load(AUTOSAVE_SLOT); const snapshot=loaded?.state||loaded; if(!snapshot)throw new Error('no-save'); restoreSnapshot(snapshot); }catch(err){ console.error(err); ui.saveInfo.textContent='ذخیره قابل بازیابی نیست.'; } }
@@ -160,7 +145,7 @@
     else if(state.phase==='TO_SITE'){ state.phase='DELIVERING'; state.actionHold=0; state.speed=0; await saveGame('delivery-start'); }
     else if(state.phase==='RETURNING'){ state.deliveries++; state.missionIndex=(state.missionIndex+1)%destinations.length; selectMission(); state.phase='AT_DEPOT'; dispatch('برگشتی کارخانه. سفارش بعدی آماده است.'); await saveGame('returned-to-depot'); }
   }
-  async function completeLoading(){ state.phase='TO_SITE'; state.loaded=true; state.volume=state.mission.volume; applyMissionVisuals(); dispatch(`بار آماده است؛ برو به ${state.mission.name}.`); await saveGame('loading-complete'); }
+  async function completeLoading(){ state.phase='TO_SITE'; state.loaded=true; state.volume=state.mission.volume; resetConcreteState(); applyMissionVisuals(); dispatch(`بار آماده است؛ برو به ${state.mission.name}.`); await saveGame('loading-complete'); }
   async function completeDelivery(){ const deliveryScore=500+Math.max(0,Math.round(state.time*4))+Math.round(state.quality*8)+Math.round(state.health*3); state.score+=deliveryScore; state.loaded=false; state.volume=0; state.phase='RETURNING'; state.actionHold=0; applyMissionVisuals(); dispatch(`تحویل ثبت شد: +${deliveryScore} امتیاز. حالا برگرد کارخانه.`); await saveGame('delivery-complete'); }
   function endShift(reason='زمان شیفت تمام شد'){ state.running=false; state.speed=0; ui.hud.classList.add('hidden'); ui.resultScore.textContent=state.score.toLocaleString('fa-IR'); ui.resultText.textContent=`${reason}. تحویل موفق: ${state.deliveries} · برخورد: ${state.collisions} · سلامت نهایی: ${Math.round(state.health)}٪`; if(ui.result.showModal)ui.result.showModal(); }
 
@@ -170,133 +155,49 @@
 
   function clampWorld(){ const lim=224; let hit=false; if(truck.position.x>lim){truck.position.x=lim;hit=true} if(truck.position.x<-lim){truck.position.x=-lim;hit=true} if(truck.position.z>lim){truck.position.z=lim;hit=true} if(truck.position.z<-lim){truck.position.z=-lim;hit=true} if(hit)collisionPenalty(1,'مرز نقشه'); }
   let collisionCooldown=0;
-
-  function circleHitsBox(px,pz,r,c){
-    const nx=Math.max(c.x-c.halfX,Math.min(px,c.x+c.halfX));
-    const nz=Math.max(c.z-c.halfZ,Math.min(pz,c.z+c.halfZ));
-    const dx=px-nx, dz=pz-nz;
-    return dx*dx+dz*dz < r*r;
-  }
-  function circleHitsCircle(px,pz,r,c){
-    const dx=px-c.x, dz=pz-c.z;
-    const rr=r+c.r;
-    return dx*dx+dz*dz < rr*rr;
-  }
-  function colliderAt(px,pz,r){
-    for(const c of colliders){
-      if(c.type==='box' ? circleHitsBox(px,pz,r,c) : circleHitsCircle(px,pz,r,c)) return c;
-    }
-    return null;
-  }
-  function truckCollision(){
-    const s=Math.sin(truck.rotation.y), c=Math.cos(truck.rotation.y);
-    const probes=[
-      {x:truck.position.x+s*COLLISION.frontOffset,z:truck.position.z+c*COLLISION.frontOffset},
-      {x:truck.position.x+s*COLLISION.rearOffset,z:truck.position.z+c*COLLISION.rearOffset}
-    ];
-    for(const p of probes){
-      const hit=colliderAt(p.x,p.z,COLLISION.probeRadius);
-      if(hit)return hit;
-    }
-    return null;
-  }
-  function collisionPenalty(severity=1,label='مانع'){
-    if(collisionCooldown>0)return;
-    collisionCooldown=1.0;
-    const t=Math.max(0,Math.min(1,severity));
-    const damage=Math.round(COLLISION.minDamage+(COLLISION.maxDamage-COLLISION.minDamage)*t);
-    const scoreLoss=Math.round(COLLISION.minScoreLoss+(COLLISION.maxScoreLoss-COLLISION.minScoreLoss)*t);
-    state.health=Math.max(0,state.health-damage);
-    state.score=Math.max(0,state.score-scoreLoss);
-    state.collisions++;
-    state.speed*=-.08;
-    dispatch(`برخورد با ${label}! ${damage}٪ آسیب و ${scoreLoss} امتیاز جریمه.`);
-    if(state.health<=0)endShift('کامیون از سرویس خارج شد');
-  }
+  function circleHitsBox(px,pz,r,c){ const nx=Math.max(c.x-c.halfX,Math.min(px,c.x+c.halfX)); const nz=Math.max(c.z-c.halfZ,Math.min(pz,c.z+c.halfZ)); const dx=px-nx,dz=pz-nz; return dx*dx+dz*dz<r*r; }
+  function circleHitsCircle(px,pz,r,c){ const dx=px-c.x,dz=pz-c.z,rr=r+c.r; return dx*dx+dz*dz<rr*rr; }
+  function colliderAt(px,pz,r){ for(const c of colliders){ if(c.type==='box'?circleHitsBox(px,pz,r,c):circleHitsCircle(px,pz,r,c))return c; } return null; }
+  function truckCollision(){ const s=Math.sin(truck.rotation.y),c=Math.cos(truck.rotation.y); const probes=[{x:truck.position.x+s*COLLISION.frontOffset,z:truck.position.z+c*COLLISION.frontOffset},{x:truck.position.x+s*COLLISION.rearOffset,z:truck.position.z+c*COLLISION.rearOffset}]; for(const p of probes){const hit=colliderAt(p.x,p.z,COLLISION.probeRadius);if(hit)return hit;} return null; }
+  function collisionPenalty(severity=1,label='مانع'){ if(collisionCooldown>0)return; collisionCooldown=1; const t=Math.max(0,Math.min(1,severity)); const damage=Math.round(COLLISION.minDamage+(COLLISION.maxDamage-COLLISION.minDamage)*t); const scoreLoss=Math.round(COLLISION.minScoreLoss+(COLLISION.maxScoreLoss-COLLISION.minScoreLoss)*t); state.health=Math.max(0,state.health-damage); state.score=Math.max(0,state.score-scoreLoss); state.collisions++; state.speed*=-.08; dispatch(`برخورد با ${label}! ${damage}٪ آسیب و ${scoreLoss} امتیاز جریمه.`); if(state.health<=0)endShift('کامیون از سرویس خارج شد'); }
 
   function approach(value,target,maxDelta){ if(value<target)return Math.min(value+maxDelta,target); if(value>target)return Math.max(value-maxDelta,target); return value; }
-  function currentPhysics(){ return state.loaded ? PHYSICS.loaded : PHYSICS.empty; }
+  function currentPhysics(){ return state.loaded?PHYSICS.loaded:PHYSICS.empty; }
   function truckPhysics(dt){
-    const p=currentPhysics();
-    const throttle=input.up;
-    const reverse=input.down;
-    const speedRatio=Math.min(1,Math.abs(state.speed)/Math.max(1,p.maxForward));
-
-    if(throttle){
-      if(state.speed<-.15) state.speed=approach(state.speed,0,p.brake*dt);
-      else state.speed+=p.accel*(1-.55*speedRatio)*dt;
-    } else if(reverse){
-      if(state.speed>.15) state.speed=approach(state.speed,0,p.brake*dt);
-      else state.speed-=p.reverseAccel*(1-.35*Math.min(1,Math.abs(state.speed)/p.maxReverse))*dt;
-    } else {
-      const resistance=p.rolling+p.drag*state.speed*state.speed;
-      state.speed=approach(state.speed,0,resistance*dt);
-    }
-
-    if(input.brake) state.speed=approach(state.speed,0,PHYSICS.handbrake*dt);
-    state.speed=Math.max(-p.maxReverse,Math.min(p.maxForward,state.speed));
-    if(Math.abs(state.speed)<PHYSICS.lowSpeedDeadband)state.speed=0;
-
-    const steerInput=(input.left?1:0)+(input.right?-1:0);
-    const steerLimit=p.maxSteer*(1-(1-PHYSICS.steerAtSpeedFloor)*Math.min(1,kmh()/70));
-    const steerTarget=steerInput*steerLimit;
-    state.steer=approach(state.steer,steerTarget,p.steerRate*dt);
-    if(!steerInput) state.steer=approach(state.steer,0,p.steerRate*1.25*dt);
-
-    const previousPosition=truck.position.clone();
-    const previousYaw=truck.rotation.y;
-    const impactSpeed=Math.abs(state.speed);
-
-    if(Math.abs(state.speed)>.03){
-      const yawRate=(state.speed/PHYSICS.wheelBase)*Math.tan(state.steer);
-      truck.rotation.y+=yawRate*dt;
-    }
-
-    const fwd=new BABYLON.Vector3(Math.sin(truck.rotation.y),0,Math.cos(truck.rotation.y));
-    truck.position.addInPlace(fwd.scale(state.speed*dt));
-
-    const hit=truckCollision();
-    if(hit){
-      truck.position.copyFrom(previousPosition);
-      truck.rotation.y=previousYaw;
-      const severity=Math.min(1,impactSpeed/currentPhysics().maxForward);
-      collisionPenalty(severity,hit.label);
-    }
-
-    wheelSpin+=state.speed*dt/PHYSICS.wheelRadius;
-    wheels.forEach(w=>{ w.mesh.rotation.x=wheelSpin; if(w.front)w.pivot.rotation.y=-state.steer; });
-    drum.rotation.y+=(state.loaded?1.65:.45)*dt;
-    stripe.rotation.y=drum.rotation.y;
-    clampWorld();
+    const p=currentPhysics(),throttle=input.up,reverse=input.down,speedRatio=Math.min(1,Math.abs(state.speed)/Math.max(1,p.maxForward));
+    if(throttle){ if(state.speed<-.15)state.speed=approach(state.speed,0,p.brake*dt); else state.speed+=p.accel*(1-.55*speedRatio)*dt; }
+    else if(reverse){ if(state.speed>.15)state.speed=approach(state.speed,0,p.brake*dt); else state.speed-=p.reverseAccel*(1-.35*Math.min(1,Math.abs(state.speed)/p.maxReverse))*dt; }
+    else { const resistance=p.rolling+p.drag*state.speed*state.speed; state.speed=approach(state.speed,0,resistance*dt); }
+    if(input.brake)state.speed=approach(state.speed,0,PHYSICS.handbrake*dt);
+    state.speed=Math.max(-p.maxReverse,Math.min(p.maxForward,state.speed)); if(Math.abs(state.speed)<PHYSICS.lowSpeedDeadband)state.speed=0;
+    const steerInput=(input.left?1:0)+(input.right?-1:0); const steerLimit=p.maxSteer*(1-(1-PHYSICS.steerAtSpeedFloor)*Math.min(1,kmh()/70)); const steerTarget=steerInput*steerLimit; state.steer=approach(state.steer,steerTarget,p.steerRate*dt); if(!steerInput)state.steer=approach(state.steer,0,p.steerRate*1.25*dt);
+    const previousPosition=truck.position.clone(),previousYaw=truck.rotation.y,impactSpeed=Math.abs(state.speed);
+    if(Math.abs(state.speed)>.03){ const yawRate=(state.speed/PHYSICS.wheelBase)*Math.tan(state.steer); truck.rotation.y+=yawRate*dt; }
+    const fwd=new BABYLON.Vector3(Math.sin(truck.rotation.y),0,Math.cos(truck.rotation.y)); truck.position.addInPlace(fwd.scale(state.speed*dt));
+    const hit=truckCollision(); if(hit){ truck.position.copyFrom(previousPosition); truck.rotation.y=previousYaw; collisionPenalty(Math.min(1,impactSpeed/currentPhysics().maxForward),hit.label); }
+    wheelSpin+=state.speed*dt/PHYSICS.wheelRadius; wheels.forEach(w=>{w.mesh.rotation.x=wheelSpin;if(w.front)w.pivot.rotation.y=-state.steer;}); drum.rotation.y+=(state.loaded?1.65:.45)*dt; stripe.rotation.y=drum.rotation.y; clampWorld();
   }
 
   function cameraUpdate(dt){
-    const fwd=new BABYLON.Vector3(Math.sin(truck.rotation.y),0,Math.cos(truck.rotation.y));
-    const right=new BABYLON.Vector3(fwd.z,0,-fwd.x);
-    let desired,target;
-    if(state.cameraMode===0){
-      const speedPush=Math.min(3,kmh()/35);
-      desired=truck.position.subtract(fwd.scale(13+speedPush)).add(new BABYLON.Vector3(0,7.5+.3*speedPush,0));
-      target=truck.position.add(fwd.scale(7+speedPush)).add(new BABYLON.Vector3(0,2.1,0));
-    } else {
-      desired=truck.position.add(fwd.scale(2.7)).add(right.scale(-.35)).add(new BABYLON.Vector3(0,3.2,0));
-      target=truck.position.add(fwd.scale(24)).add(new BABYLON.Vector3(0,2.6,0));
-    }
-    const smoothing=1-Math.exp(-5*dt);
-    camera.position=BABYLON.Vector3.Lerp(camera.position,desired,smoothing);
-    camera.setTarget(target);
+    const fwd=new BABYLON.Vector3(Math.sin(truck.rotation.y),0,Math.cos(truck.rotation.y)),right=new BABYLON.Vector3(fwd.z,0,-fwd.x); let desired,target;
+    if(state.cameraMode===0){ const speedPush=Math.min(3,kmh()/35); desired=truck.position.subtract(fwd.scale(13+speedPush)).add(new BABYLON.Vector3(0,7.5+.3*speedPush,0)); target=truck.position.add(fwd.scale(7+speedPush)).add(new BABYLON.Vector3(0,2.1,0)); }
+    else { desired=truck.position.add(fwd.scale(2.7)).add(right.scale(-.35)).add(new BABYLON.Vector3(0,3.2,0)); target=truck.position.add(fwd.scale(24)).add(new BABYLON.Vector3(0,2.6,0)); }
+    const smoothing=1-Math.exp(-5*dt); camera.position=BABYLON.Vector3.Lerp(camera.position,desired,smoothing); camera.setTarget(target);
   }
 
+  function updateConcreteQuality(dt){
+    if(!state.loaded)return;
+    applyConcreteState(concreteQuality.step({elapsedDeliveryTime:state.elapsedDeliveryTime,freshness:state.freshness,slumpEstimate:state.slumpEstimate,quality:state.quality,overspeedSeconds:state.overspeedSeconds},{dt,speedKmh:kmh(),mixType:state.mission?.type,loaded:true}));
+  }
   function updateMission(dt){
     if(!state.running||paused)return;
-    state.time-=dt;
-    if(state.loaded)state.quality=Math.max(0,state.quality-dt*.11-(kmh()>65?dt*.025:0));
+    state.time-=dt; updateConcreteQuality(dt);
     if(state.time<=0){endShift('زمان مأموریت تمام شد');return;}
     if(state.quality<=18){endShift('کیفیت بتن به حد مردودی رسید');return;}
     if(state.phase==='AT_DEPOT')setMissionUI('مرحله ۱ از ۴','بارگیری در کارخانه',`زیر بچینگ توقف کن. سفارش: ${state.mission.volume} m³ ${state.mission.type}`,0);
     else if(state.phase==='LOADING'){ state.actionHold+=dt; const p=Math.min(100,state.actionHold/3.2*100); setMissionUI('در حال بارگیری','بچینگ در حال بارگیری است','حرکت نکن؛ بارگیری تا تکمیل ادامه دارد.',p); if(p>=100)completeLoading(); }
-    else if(state.phase==='TO_SITE'){ const dist=Math.round(distanceTo(state.mission.x,state.mission.z)); setMissionUI('مرحله ۲ از ۴',`حرکت به ${state.mission.name}`,`فاصله تقریبی ${dist} متر · بتن را با کیفیت مناسب برسان.`,Math.max(0,100-dist/3)); if(state.time<45&&performance.now()/1000-state.lastDispatch>12){state.lastDispatch=performance.now()/1000;dispatch('راننده! کمتر از ۴۵ ثانیه وقت داری؛ معطل نکن!');} }
-    else if(state.phase==='DELIVERING'){ state.actionHold+=dt; const p=Math.min(100,state.actionHold/3.6*100); setMissionUI('مرحله ۳ از ۴','تخلیه بتن','پارک ثبت شد؛ در حال تخلیه.',p); if(p>=100)completeDelivery(); }
+    else if(state.phase==='TO_SITE'){ const dist=Math.round(distanceTo(state.mission.x,state.mission.z)); setMissionUI('مرحله ۲ از ۴',`حرکت به ${state.mission.name}`,`فاصله ${dist} متر · تازگی ${Math.round(state.freshness)}٪ · اسلامپ برآوردی ${Math.round(state.slumpEstimate)} mm`,Math.max(0,100-dist/3)); if(state.time<45&&performance.now()/1000-state.lastDispatch>12){state.lastDispatch=performance.now()/1000;dispatch('راننده! کمتر از ۴۵ ثانیه وقت داری؛ معطل نکن!');} }
+    else if(state.phase==='DELIVERING'){ state.actionHold+=dt; const p=Math.min(100,state.actionHold/3.6*100); setMissionUI('مرحله ۳ از ۴','تخلیه بتن',`کیفیت ${Math.round(state.quality)}٪ · تازگی ${Math.round(state.freshness)}٪`,p); if(p>=100)completeDelivery(); }
     else if(state.phase==='RETURNING'){ const dist=Math.round(distanceTo(depot.x,depot.z)); setMissionUI('مرحله ۴ از ۴','بازگشت به کارخانه',`برای سفارش بعدی برگرد. فاصله ${dist} متر.`,Math.max(0,100-dist/3)); }
   }
 
@@ -304,36 +205,21 @@
     ui.timer.textContent=`${String(Math.max(0,Math.floor(state.time/60))).padStart(2,'0')}:${String(Math.max(0,Math.floor(state.time%60))).padStart(2,'0')}`;
     ui.quality.textContent=`${Math.round(state.quality)}%`; ui.health.textContent=`${Math.round(state.health)}%`; ui.score.textContent=state.score.toLocaleString('fa-IR'); ui.speed.textContent=Math.round(kmh());
     const available=actionAvailable(); ui.actionBtn.disabled=!available; ui.actionBtn.style.opacity=available?'1':'.5';
-    if(state.phase==='AT_DEPOT')ui.actionHint.textContent=available?'برای شروع بارگیری E را بزن':'وارد محدوده بچینگ شو و توقف کن';
-    else if(state.phase==='TO_SITE')ui.actionHint.textContent=available?'پارک انجام شد؛ E برای تخلیه':'داخل حلقه سبز پروژه توقف کن';
-    else if(state.phase==='RETURNING')ui.actionHint.textContent=available?'E برای سفارش بعدی':'به کارخانه برگرد';
-    else ui.actionHint.textContent='عملیات در حال انجام است…';
+    if(state.phase==='AT_DEPOT')ui.actionHint.textContent=available?'برای شروع بارگیری E را بزن':'وارد محدوده بچینگ شو و توقف کن'; else if(state.phase==='TO_SITE')ui.actionHint.textContent=available?'پارک انجام شد؛ E برای تخلیه':'داخل حلقه سبز پروژه توقف کن'; else if(state.phase==='RETURNING')ui.actionHint.textContent=available?'E برای سفارش بعدی':'به کارخانه برگرد'; else ui.actionHint.textContent='عملیات در حال انجام است…';
   }
 
   async function startGame(){ if(ui.result.open)ui.result.close(); resetTruck(); state.running=true; paused=false; state.phase='AT_DEPOT'; state.missionIndex=0; state.score=0; state.deliveries=0; state.health=100; state.collisions=0; state.lastDispatch=0; selectMission(); ui.menu.classList.add('hidden'); ui.hud.classList.remove('hidden'); dispatch(`شیفت شروع شد. ${ui.playerName.value||'راننده طلوع'}، اول بار بزن.`); await saveGame('new-game'); }
 
   const keyMap={KeyW:'up',ArrowUp:'up',KeyS:'down',ArrowDown:'down',KeyA:'left',ArrowLeft:'left',KeyD:'right',ArrowRight:'right',Space:'brake'};
   addEventListener('keydown',e=>{ if(keyMap[e.code]&&!paused){input[keyMap[e.code]]=true;e.preventDefault();} if(e.repeat)return; if(e.code==='KeyP'||e.code==='Escape'){if(state.running)setPaused(!paused);e.preventDefault();return;} if(paused)return; if(e.code==='KeyE')doAction(); if(e.code==='KeyC')state.cameraMode=(state.cameraMode+1)%2; if(e.code==='KeyR'){resetTruck();state.health=Math.max(0,state.health-2);} });
-  addEventListener('keyup',e=>{ if(keyMap[e.code]){input[keyMap[e.code]]=false;e.preventDefault();} });
-  addEventListener('blur',()=>Object.keys(input).forEach(k=>input[k]=false));
-
+  addEventListener('keyup',e=>{if(keyMap[e.code]){input[keyMap[e.code]]=false;e.preventDefault();}}); addEventListener('blur',()=>Object.keys(input).forEach(k=>input[k]=false));
   ui.actionBtn.addEventListener('click',doAction); ui.start.addEventListener('click',startGame); ui.continueBtn.addEventListener('click',continueGame); ui.restart.addEventListener('click',startGame); ui.resume.addEventListener('click',()=>setPaused(false)); ui.save.addEventListener('click',pauseAndSave); ui.mainMenu.addEventListener('click',saveAndMenu);
 
-  if(window.tolouDesktop){
-    ui.exit.classList.remove('hidden');
-    window.tolouDesktop.getAppInfo().then(info=>{if(info?.appVersion)gameVersion=info.appVersion;});
-    ui.exit.addEventListener('click',async()=>{setPaused(true);await saveGame('exit');window.tolouDesktop.confirmClose?.();});
-    window.tolouDesktop.onCloseRequested?.(async()=>{if(state.running){setPaused(true);await saveGame('window-close');}window.tolouDesktop.confirmClose?.();});
-  }
+  if(window.tolouDesktop){ ui.exit.classList.remove('hidden'); window.tolouDesktop.getAppInfo().then(info=>{if(info?.appVersion)gameVersion=info.appVersion;}); ui.exit.addEventListener('click',async()=>{setPaused(true);await saveGame('exit');window.tolouDesktop.confirmClose?.();}); window.tolouDesktop.onCloseRequested?.(async()=>{if(state.running){setPaused(true);await saveGame('window-close');}window.tolouDesktop.confirmClose?.();}); }
+
+  window.TolouGameTelemetry=Object.freeze({getConcrete:()=>({loaded:state.loaded,mixType:state.mission?.type||null,quality:state.quality,freshness:state.freshness,slumpEstimate:state.slumpEstimate,elapsedDeliveryTime:state.elapsedDeliveryTime,overspeedSeconds:state.overspeedSeconds})});
 
   let last=performance.now(),autosaveClock=0;
-  engine.runRenderLoop(()=>{
-    const now=performance.now(); const dt=Math.min(.05,(now-last)/1000); last=now; collisionCooldown=Math.max(0,collisionCooldown-dt);
-    if(state.running&&!paused){ truckPhysics(dt); updateMission(dt); updateHUD(); autosaveClock+=dt; if(autosaveClock>=30){autosaveClock=0;saveGame('periodic');} }
-    cameraUpdate(dt); arrow.rotation.y+=dt*1.8; arrow.position.y=6.7+Math.sin(now/350)*.6; scene.render();
-  });
-
-  addEventListener('resize',()=>engine.resize());
-  refreshContinue();
-  ui.loading.classList.add('hidden');
+  engine.runRenderLoop(()=>{ const now=performance.now(),dt=Math.min(.05,(now-last)/1000); last=now; collisionCooldown=Math.max(0,collisionCooldown-dt); if(state.running&&!paused){truckPhysics(dt);updateMission(dt);updateHUD();autosaveClock+=dt;if(autosaveClock>=30){autosaveClock=0;saveGame('periodic');}} cameraUpdate(dt); arrow.rotation.y+=dt*1.8; arrow.position.y=6.7+Math.sin(now/350)*.6; scene.render(); });
+  addEventListener('resize',()=>engine.resize()); refreshContinue(); ui.loading.classList.add('hidden');
 })();

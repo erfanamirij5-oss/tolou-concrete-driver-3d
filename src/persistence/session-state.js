@@ -12,9 +12,7 @@
       saveVersion: SAVE_VERSION,
       gameVersion: runtime.gameVersion || '0.2.0',
       timestamp: new Date().toISOString(),
-      player: {
-        name: String(runtime.playerName || 'راننده طلوع').slice(0, 40)
-      },
+      player: { name: String(runtime.playerName || 'راننده طلوع').slice(0, 40) },
       truck: {
         position: { x: finite(runtime.truck.position.x), y: finite(runtime.truck.position.y), z: finite(runtime.truck.position.z) },
         rotation: { x: finite(runtime.truck.rotation.x), y: finite(runtime.truck.rotation.y), z: finite(runtime.truck.rotation.z) },
@@ -36,11 +34,13 @@
         loaded: Boolean(runtime.state.loaded),
         mixType: runtime.state.mission?.type || null,
         loadedVolume: Math.max(0, finite(runtime.state.volume)),
-        quality: clamp(runtime.state.quality, 0, 100)
+        quality: clamp(runtime.state.quality, 0, 100),
+        freshness: clamp(runtime.state.freshness ?? runtime.state.quality, 0, 100),
+        slumpEstimate: Math.max(0, finite(runtime.state.slumpEstimate, 100)),
+        elapsedDeliveryTime: Math.max(0, finite(runtime.state.elapsedDeliveryTime)),
+        overspeedSeconds: Math.max(0, finite(runtime.state.overspeedSeconds))
       },
-      settings: {
-        cameraMode: Math.max(0, Math.floor(finite(runtime.state.cameraMode)))
-      }
+      settings: { cameraMode: Math.max(0, Math.floor(finite(runtime.state.cameraMode))) }
     };
   }
 
@@ -54,6 +54,7 @@
     const p = snapshot.truck.position || {};
     const r = snapshot.truck.rotation || {};
     if (![p.x,p.y,p.z,r.x,r.y,r.z].every(v => Number.isFinite(Number(v)))) return { ok:false, reason:'invalid-transform' };
+    if (!Number.isFinite(Number(snapshot.concrete.quality))) return { ok:false, reason:'invalid-concrete-quality' };
     return { ok:true };
   }
 
