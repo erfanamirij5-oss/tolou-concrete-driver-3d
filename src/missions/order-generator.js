@@ -26,7 +26,12 @@
 
   function generate({destination, missionIndex=0, careerLevel=1, seed='tolou'}={}) {
     if (!destination || !destination.id) throw new Error('destination-required');
-    const rnd = seeded(hash(`${VERSION}:${seed}:${missionIndex}:${destination.id}:${careerLevel}`));
+
+    // Contract identity/randomized characteristics are stable for a given
+    // destination + mission index + seed. Career progression is applied as a
+    // monotonic pressure term after generation so levelling up cannot reroll
+    // the job into an accidentally easier/lower-paying contract.
+    const rnd = seeded(hash(`${VERSION}:${seed}:${missionIndex}:${destination.id}`));
     const mix = MIXES[Math.floor(rnd()*MIXES.length) % MIXES.length];
     const volume = VOLUMES[Math.floor(rnd()*VOLUMES.length) % VOLUMES.length];
     const levelPressure = clamp((Math.max(1,careerLevel)-1)*0.012,0,0.14);
